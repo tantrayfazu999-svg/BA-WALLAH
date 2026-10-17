@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BA Wala</title>
 <link rel="stylesheet" href="style.css">
+<style>
+nav button,#subs button{flex:none}
+#subs{display:flex;gap:8px;overflow-x:auto;padding:0 16px 8px}
+#subs button{background:transparent;color:var(--muted);border:1px solid var(--line);padding:6px 12px;border-radius:999px;white-space:nowrap}
+#subs button.active{background:var(--ink);color:var(--bg)}
+nav button.add,#subs button.add{background:transparent;color:var(--brand);border:1px dashed var(--brand)}
+#delNode{background:#dc2626;margin-top:6px}
+#addingTo{font-weight:600;margin:0 0 6px}
+.hint{color:var(--muted);font-size:.85rem;margin:4px 0}
+#vBody video{max-width:100%;max-height:100%;background:#000}
+</style>
 </head>
 <body>
 <header>
@@ -13,24 +24,25 @@
 </header>
 
 <nav id="sections"></nav>
+<div id="subs"></div>
 
 <main>
-  <input id="search" type="search" placeholder="Search subject, title or year…">
   <section id="uploadBox" hidden>
     <h2>Add new item</h2>
     <p id="addingTo"></p>
     <form id="uploadForm">
-      <input id="subject" placeholder="Subject" required>
-      <input id="title" placeholder="Title" required>
+      <input id="title" placeholder="Title (e.g. Unit 1 Notes)" required>
       <input id="year" placeholder="Year (e.g. 2024)">
       <select id="mode">
-        <option value="file">Upload PDF / picture</option>
-        <option value="link">Paste Google Drive / any link</option>
+        <option value="file">Upload PDF / picture / video</option>
+        <option value="link">Paste YouTube / Google Drive / any link</option>
       </select>
-      <input id="file" type="file" accept="application/pdf,image/*">
-      <input id="link" type="url" placeholder="https://drive.google.com/..." hidden>
-      <button type="submit">Add to this section</button>
+      <input id="file" type="file" accept="application/pdf,image/*,video/*">
+      <input id="link" type="url" placeholder="https://..." hidden>
+      <p class="hint">Files up to 50 MB (an 8-minute video at 480p fits). For bigger videos, upload to YouTube as Unlisted and paste the link.</p>
+      <button type="submit">Add here</button>
       <button type="button" id="logoutBtn" class="ghost">Log out</button>
+      <button type="button" id="delNode">Delete this section</button>
       <p id="msg"></p>
     </form>
   </section>
