@@ -1,88 +1,138 @@
-const SECTIONS = [
-  { id: "major", name: "Major" },
-  { id: "minor", name: "Minor" },
-  { id: "md", name: "MD (Multidisciplinary)" },
-  { id: "skill", name: "Skill" },
-  { id: "evs", name: "Environmental Science" },
-  { id: "health", name: "Health & Wellness" },
-  { id: "qp", name: "Question Papers" }
-];
-
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.BA_CONFIG;
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
 
-let section = SECTIONS[0].id;
+let sections = [];
+let topId = null;   // selected main section
+let subId = null;   // selected subject inside it (null = General)
 let isAdmin = false;
 let items = [];
 
-// ---------- sections ----------
-function secName() { return SECTIONS.find((s) => s.id === section).name; }
+const tops = () => sections.filter((s) => !s.parent_id);
+const subsOf = (id) => sections.filter((s) => s.parent_id === id);
+const nameOf = (id) => (sections.find((s) => s.id === id) || {}).name || "";
+const targetId = () => subId || topId;
+const isQP = () => /question/i.test(nameOf(topId));
 
-function updateForm() {
-  const qp = section === "qp";
-  $("year").hidden = !qp;
-  $("addingTo").textContent = "Adding to: " + secName();
-  $("subject").placeholder = qp ? "Subject of the question paper (e.g. Economics)" : "Subject of the notes (e.g. Economics)";
-  $("title").placeholder = qp ? "Title (e.g. Semester 2 Final Paper)" : "Title (e.g. Unit 1 Notes)";
+function setList(text) {
+  const list = $("list"); list.textContent = "";
+  const p = document.createElement("p"); p.className = "empty"; p.textContent = text; list.appendChild(p);
+}
+
+// ---------- sections & subjects ----------
+async function loadSections() {
+  const { data, error } = await sb.from("sections").select("*").order("sort_order").order("created_at");
+  if (error) { setList("Could not load sections: " + error.message); return; }
+  sections = data;
+  if (!sections.find((s) => s.id === topId)) { topId = tops()[0] ? tops()[0].id : null; subId = null; }
+  if (subId && !sections.find((s) => s.id === subId)) subId = null;
+  renderNav();
+  await loadItems();
+}
+
+function chip(text, active, onclick, cls) {
+  const b = document.createElement("button");
+  b.textContent = text;
+  if (active) b.classList.add("active");
+  if (cls) b.classList.add(cls);
+  b.onclick = onclick;
+  return b;
 }
 
 function renderNav() {
-  const nav = $("sections");
-  nav.textContent = "";
-  SECTIONS.forEach((s) => {
-    const b = document.createElement("button");
-    b.textContent = s.name;
-    if (s.id === section) b.className = "active";
-    b.onclick = () => { section = s.id; renderNav(); load(); };
-    nav.appendChild(b);
-  });
-  $("secTitle").textContent = secName();
-  updateForm();
+  const nav = $("sections"); nav.textContent = "";
+  tops().forEach((s) => nav.appendChild(chip(s.name, s.id === topId, () => { topId = s.id; subId = null; renderNav(); loadItems(); })));
+  if (isAdmin) nav.appendChild(chip("+ Add section", false, addSection, "add"));
+
+  const subs = $("subs"); subs.textContent = "";
+  if (topId) {
+    subs.appendChild(chip("General", subId === null, () => { subId = null; renderNav(); loadItems(); }));
+    subsOf(topId).forEach((s) => subs.appendChild(chip(s.name, s.id === subId, () => { subId = s.id; renderNav(); loadItems(); })));
+    if (isAdmin) subs.appendChild(chip("+ Add subject", false, addSubject, "add"));
+  }
+  const path = nameOf(topId) + (subId ? " › " + nameOf(subId) : "");
+  $("secTitle").textContent = path;
+  $("addingTo").textContent = "Adding to: " + path;
+  $("year").hidden = !isQP();
+  $("delNode").textContent = subId ? "Delete this subject" : "Delete this section";
 }
 
-$("search").oninput = draw;
+async function addSection() {
+  const name = (prompt("New section name (e.g. Law)") || "").trim();
+  if (!name) return;
+  const { data, error } = await sb.from("sections").insert({ name, sort_order: Date.now() }).select().single();
+  if (error) { alert(error.message); return; }
+  topId = data.id; subId = null;
+  await loadSections();
+}
 
-// ---------- load & draw ----------
-async function load() {
-  $("list").innerHTML = '<p class="empty">Loading…</p>';
-  const { data, error } = await sb.from("items").select("*").eq("section", section).order("created_at", { ascending: false });
-  if (error) { $("list").innerHTML = ""; const p = document.createElement("p"); p.className = "empty"; p.textContent = "Could not load: " + error.message; $("list").appendChild(p); return; }
+async function addSubject() {
+  const name = (prompt("New subject name inside " + nameOf(topId) + " (e.g. History)") || "").trim();
+  if (!name) return;
+  const { data, error } = await sb.from("sections").insert({ name, parent_id: topId, sort_order: Date.now() }).select().single();
+  if (error) { alert(error.message); return; }
+  subId = data.id;
+  await loadSections();
+}
+
+async function deleteNode() {
+  const id = targetId();
+  if (!id) return;
+  if (!confirm(`Delete "${nameOf(id)}" and everything inside it? This cannot be undone.`)) return;
+  const ids = [id, ...subsOf(id).map((s) => s.id)];
+  const { data } = await sb.from("items").select("file_path").in("section_id", ids);
+  const paths = (data || []).map((r) => r.file_path).filter(Boolean);
+  if (paths.length) await sb.storage.from("uploads").remove(paths);
+  const { error } = await sb.from("sections").delete().eq("id", id);
+  if (error) { alert(error.message); return; }
+  if (id === topId) topId = null;
+  subId = null;
+  await loadSections();
+}
+$("delNode").onclick = deleteNode;
+
+// ---------- items ----------
+async function loadItems() {
+  const id = targetId();
+  if (!id) { items = []; setList("No sections yet."); return; }
+  setList("Loading…");
+  const { data, error } = await sb.from("items").select("*").eq("section_id", id).order("created_at", { ascending: false });
+  if (error) { setList("Could not load: " + error.message); return; }
   items = data;
   draw();
 }
 
 function isImage(it) { return (it.mime || "").startsWith("image/"); }
+function isVideo(it) { return (it.mime || "").startsWith("video/") || !!ytEmbed(it.url); }
+
+function typeLabel(it) {
+  if (isImage(it)) return "Picture";
+  if (isVideo(it)) return "Video";
+  if (it.kind === "link") return "Link";
+  return "PDF";
+}
 
 function draw() {
-  const q = $("search").value.trim().toLowerCase();
   const list = $("list");
   list.textContent = "";
-  const shown = items.filter((it) =>
-    !q ||
-    it.title.toLowerCase().includes(q) ||
-    (it.subject || "").toLowerCase().includes(q) ||
-    (it.year || "").includes(q)
-  );
-  if (!shown.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "Nothing here yet."; list.appendChild(p); return; }
+  if (!items.length) { setList("Nothing here yet."); return; }
 
-  shown.forEach((it) => {
+  items.forEach((it) => {
     const card = document.createElement("div"); card.className = "card";
 
     let thumb;
     if (isImage(it)) { thumb = document.createElement("img"); thumb.src = it.url; thumb.alt = ""; thumb.loading = "lazy"; }
-    else { thumb = document.createElement("div"); thumb.textContent = it.kind === "link" ? "🔗" : "📄"; }
+    else { thumb = document.createElement("div"); thumb.textContent = isVideo(it) ? "🎬" : it.kind === "link" ? "🔗" : "📄"; }
     thumb.className = "thumb";
 
     const info = document.createElement("div"); info.className = "info";
     const t = document.createElement("b"); t.textContent = it.title;
     const meta = document.createElement("div"); meta.className = "meta";
-    const badge = document.createElement("span"); badge.className = "badge";
-    badge.textContent = it.subject || (it.category === "pyq" ? "Question paper" : "Notes");
+    const badge = document.createElement("span"); badge.className = "badge"; badge.textContent = typeLabel(it);
     meta.appendChild(badge);
     if (it.year) meta.appendChild(document.createTextNode(it.year + " · "));
     meta.appendChild(document.createTextNode(new Date(it.created_at).toLocaleDateString()));
-    const open = document.createElement("button"); open.className = "viewbtn"; open.textContent = "View";
+    const open = document.createElement("button"); open.className = "viewbtn"; open.textContent = isVideo(it) ? "Play" : "View";
     open.onclick = () => openViewer(it);
     info.append(t, meta, open);
     card.append(thumb, info);
@@ -105,6 +155,11 @@ let viewToken = 0;
 function driveEmbed(url) {
   const m = url.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
   return m ? `https://drive.google.com/file/d/${m[1]}/preview` : null;
+}
+
+function ytEmbed(url) {
+  const m = (url || "").match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  return m ? `https://www.youtube.com/embed/${m[1]}` : null;
 }
 
 async function renderPdf(url, body, token) {
@@ -140,16 +195,21 @@ function openViewer(it) {
   body.textContent = "";
   if (isImage(it)) {
     const img = document.createElement("img"); img.src = it.url; img.alt = it.title; body.appendChild(img);
+  } else if ((it.mime || "").startsWith("video/")) {
+    const v = document.createElement("video"); v.src = it.url; v.controls = true; v.playsInline = true; body.appendChild(v);
   } else if (it.kind === "file") {
     renderPdf(it.url, body, token);
   } else {
     const f = document.createElement("iframe");
-    f.src = driveEmbed(it.url) || it.url; f.title = it.title; body.appendChild(f);
+    f.src = ytEmbed(it.url) || driveEmbed(it.url) || it.url;
+    f.title = it.title; f.allow = "autoplay; fullscreen"; f.allowFullscreen = true;
+    body.appendChild(f);
   }
   $("viewer").showModal();
 }
 function closeViewer() { viewToken++; $("viewer").close(); $("vBody").textContent = ""; }
 $("vClose").onclick = closeViewer;
+$("viewer").addEventListener("close", () => { $("vBody").textContent = ""; });
 
 // ---------- admin auth ----------
 async function refreshAuth() {
@@ -157,6 +217,7 @@ async function refreshAuth() {
   isAdmin = !!data.session;
   $("uploadBox").hidden = !isAdmin;
   $("adminBtn").textContent = isAdmin ? "Admin ✓" : "Admin";
+  renderNav();
   draw();
 }
 $("adminBtn").onclick = () => { if (!isAdmin) $("loginDlg").showModal(); else $("uploadBox").scrollIntoView(); };
@@ -180,14 +241,15 @@ $("uploadForm").onsubmit = async (e) => {
   e.preventDefault();
   const msg = $("msg"); msg.textContent = "Saving…";
   try {
-    const qp = section === "qp";
+    const target = targetId();
+    if (!target) throw new Error("Add a section first.");
     let url, kind, mime = null, path = null;
     if ($("mode").value === "file") {
       const f = $("file").files[0];
-      if (!f) throw new Error("Choose a PDF or picture first.");
-      if (f.size > 50 * 1024 * 1024) throw new Error("File is over 50 MB (free limit).");
+      if (!f) throw new Error("Choose a PDF, picture or video first.");
+      if (f.size > 50 * 1024 * 1024) throw new Error("File is over 50 MB. For big videos, upload to YouTube (Unlisted) and paste the link.");
       const safe = f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      path = `${section}/${Date.now()}-${safe}`;
+      path = `${target}/${Date.now()}-${safe}`;
       const up = await sb.storage.from("uploads").upload(path, f, { contentType: f.type });
       if (up.error) throw up.error;
       url = sb.storage.from("uploads").getPublicUrl(path).data.publicUrl;
@@ -198,19 +260,18 @@ $("uploadForm").onsubmit = async (e) => {
       kind = "link";
     }
     const row = {
-      section,
-      category: qp ? "pyq" : "notes",
-      subject: $("subject").value.trim(),
+      section_id: target,
+      category: isQP() ? "pyq" : "notes",
       title: $("title").value.trim(),
-      year: qp ? ($("year").value.trim() || null) : null,
+      year: isQP() ? ($("year").value.trim() || null) : null,
       kind, url, file_path: path, mime
     };
     const ins = await sb.from("items").insert(row);
     if (ins.error) throw ins.error;
     msg.textContent = "Added ✓";
     $("uploadForm").reset(); $("link").hidden = true; $("file").hidden = false;
-    updateForm();
-    load();
+    renderNav();
+    loadItems();
   } catch (err) { msg.textContent = "Error: " + err.message; }
 };
 
@@ -218,9 +279,10 @@ async function removeItem(it) {
   if (!confirm(`Delete "${it.title}"?`)) return;
   if (it.file_path) await sb.storage.from("uploads").remove([it.file_path]);
   const { error } = await sb.from("items").delete().eq("id", it.id);
-  if (error) alert(error.message); else load();
+  if (error) alert(error.message); else loadItems();
 }
 
 // ---------- start ----------
-renderNav(); load(); refreshAuth();
+refreshAuth();
+loadSections();
 sb.auth.onAuthStateChange(refreshAuth);
