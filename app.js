@@ -4,8 +4,8 @@ const SECTIONS = [
   { id: "md", name: "MD (Multidisciplinary)" },
   { id: "skill", name: "Skill" },
   { id: "evs", name: "Environmental Science" },
-  { id: "education", name: "Education" },
-  { id: "health", name: "Health & Wellness" }
+  { id: "health", name: "Health & Wellness" },
+  { id: "qp", name: "Question Papers" }
 ];
 
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.BA_CONFIG;
@@ -13,11 +13,20 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = (id) => document.getElementById(id);
 
 let section = SECTIONS[0].id;
-let cat = "all";
 let isAdmin = false;
 let items = [];
 
-// ---------- sections & tabs ----------
+// ---------- sections ----------
+function secName() { return SECTIONS.find((s) => s.id === section).name; }
+
+function updateForm() {
+  const qp = section === "qp";
+  $("year").hidden = !qp;
+  $("addingTo").textContent = "Adding to: " + secName();
+  $("subject").placeholder = qp ? "Subject of the question paper (e.g. Economics)" : "Subject of the notes (e.g. Economics)";
+  $("title").placeholder = qp ? "Title (e.g. Semester 2 Final Paper)" : "Title (e.g. Unit 1 Notes)";
+}
+
 function renderNav() {
   const nav = $("sections");
   nav.textContent = "";
@@ -28,15 +37,10 @@ function renderNav() {
     b.onclick = () => { section = s.id; renderNav(); load(); };
     nav.appendChild(b);
   });
-  $("secTitle").textContent = SECTIONS.find((s) => s.id === section).name;
+  $("secTitle").textContent = secName();
+  updateForm();
 }
 
-$("tabs").onclick = (e) => {
-  if (e.target.tagName !== "BUTTON") return;
-  cat = e.target.dataset.cat;
-  [...$("tabs").children].forEach((b) => b.classList.toggle("active", b === e.target));
-  draw();
-};
 $("search").oninput = draw;
 
 // ---------- load & draw ----------
@@ -55,8 +59,10 @@ function draw() {
   const list = $("list");
   list.textContent = "";
   const shown = items.filter((it) =>
-    (cat === "all" || it.category === cat) &&
-    (!q || it.title.toLowerCase().includes(q) || (it.year || "").includes(q))
+    !q ||
+    it.title.toLowerCase().includes(q) ||
+    (it.subject || "").toLowerCase().includes(q) ||
+    (it.year || "").includes(q)
   );
   if (!shown.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "Nothing here yet."; list.appendChild(p); return; }
 
@@ -72,7 +78,7 @@ function draw() {
     const t = document.createElement("b"); t.textContent = it.title;
     const meta = document.createElement("div"); meta.className = "meta";
     const badge = document.createElement("span"); badge.className = "badge";
-    badge.textContent = it.category === "pyq" ? "Question paper" : "Notes";
+    badge.textContent = it.subject || (it.category === "pyq" ? "Question paper" : "Notes");
     meta.appendChild(badge);
     if (it.year) meta.appendChild(document.createTextNode(it.year + " · "));
     meta.appendChild(document.createTextNode(new Date(it.created_at).toLocaleDateString()));
@@ -169,13 +175,12 @@ $("mode").onchange = () => {
   const link = $("mode").value === "link";
   $("link").hidden = !link; $("file").hidden = link;
 };
-$("category").onchange = () => { $("year").hidden = $("category").value !== "pyq"; };
-$("year").hidden = true;
 
 $("uploadForm").onsubmit = async (e) => {
   e.preventDefault();
   const msg = $("msg"); msg.textContent = "Saving…";
   try {
+    const qp = section === "qp";
     let url, kind, mime = null, path = null;
     if ($("mode").value === "file") {
       const f = $("file").files[0];
@@ -193,14 +198,18 @@ $("uploadForm").onsubmit = async (e) => {
       kind = "link";
     }
     const row = {
-      section, category: $("category").value, title: $("title").value.trim(),
-      year: $("category").value === "pyq" ? $("year").value.trim() : null,
+      section,
+      category: qp ? "pyq" : "notes",
+      subject: $("subject").value.trim(),
+      title: $("title").value.trim(),
+      year: qp ? ($("year").value.trim() || null) : null,
       kind, url, file_path: path, mime
     };
     const ins = await sb.from("items").insert(row);
     if (ins.error) throw ins.error;
     msg.textContent = "Added ✓";
-    $("uploadForm").reset(); $("year").hidden = true; $("link").hidden = true; $("file").hidden = false;
+    $("uploadForm").reset(); $("link").hidden = true; $("file").hidden = false;
+    updateForm();
     load();
   } catch (err) { msg.textContent = "Error: " + err.message; }
 };
