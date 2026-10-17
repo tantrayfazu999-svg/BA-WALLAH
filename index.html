@@ -14,23 +14,15 @@
 
 <nav id="sections"></nav>
 
-<div class="tabs" id="tabs">
-  <button data-cat="all" class="active">All</button>
-  <button data-cat="notes">Notes</button>
-  <button data-cat="pyq">Question Papers</button>
-</div>
-
 <main>
-  <input id="search" type="search" placeholder="Search title or year…">
+  <input id="search" type="search" placeholder="Search subject, title or year…">
   <section id="uploadBox" hidden>
     <h2>Add new item</h2>
+    <p id="addingTo"></p>
     <form id="uploadForm">
-      <input id="title" placeholder="Title (e.g. Unit 1 Notes)" required>
-      <select id="category">
-        <option value="notes">Notes / Study material</option>
-        <option value="pyq">Previous year question paper</option>
-      </select>
-      <input id="year" placeholder="Year (only for question papers, e.g. 2024)">
+      <input id="subject" placeholder="Subject" required>
+      <input id="title" placeholder="Title" required>
+      <input id="year" placeholder="Year (e.g. 2024)">
       <select id="mode">
         <option value="file">Upload PDF / picture</option>
         <option value="link">Paste Google Drive / any link</option>
