@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BA Wala</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>📚 BA Wala</h1>
+  <button id="adminBtn" class="ghost">Admin</button>
+</header>
+
+<nav id="sections"></nav>
+
+<div class="tabs" id="tabs">
+  <button data-cat="all" class="active">All</button>
+  <button data-cat="notes">Notes</button>
+  <button data-cat="pyq">Question Papers</button>
+</div>
+
+<main>
+  <input id="search" type="search" placeholder="Search title or year…">
+  <section id="uploadBox" hidden>
+    <h2>Add new item</h2>
+    <form id="uploadForm">
+      <input id="title" placeholder="Title (e.g. Unit 1 Notes)" required>
+      <select id="category">
+        <option value="notes">Notes / Study material</option>
+        <option value="pyq">Previous year question paper</option>
+      </select>
+      <input id="year" placeholder="Year (only for question papers, e.g. 2024)">
+      <select id="mode">
+        <option value="file">Upload PDF / picture</option>
+        <option value="link">Paste Google Drive / any link</option>
+      </select>
+      <input id="file" type="file" accept="application/pdf,image/*">
+      <input id="link" type="url" placeholder="https://drive.google.com/..." hidden>
+      <button type="submit">Add to this section</button>
+      <button type="button" id="logoutBtn" class="ghost">Log out</button>
+      <p id="msg"></p>
+    </form>
+  </section>
+  <h2 id="secTitle"></h2>
+  <div id="list"></div>
+</main>
+
+<dialog id="loginDlg">
+  <form method="dialog" id="loginForm">
+    <h3>Admin login</h3>
+    <input id="email" type="email" placeholder="Email" required>
+    <input id="password" type="password" placeholder="Password" required>
+    <button type="submit">Login</button>
+    <button type="button" id="cancelLogin" class="ghost">Cancel</button>
+    <p id="loginMsg"></p>
+  </form>
+</dialog>
+
+<dialog id="viewer">
+  <div class="vbar">
+    <b id="vTitle"></b>
+    <a id="vNew" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
+    <button id="vClose" class="ghost">Close ✕</button>
+  </div>
+  <div id="vBody"></div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
